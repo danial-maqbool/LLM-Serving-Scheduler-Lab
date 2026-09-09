@@ -1,61 +1,46 @@
-# Experiment Plan
+# Experiment design
 
-## E1 — Baseline policy comparison
+The committed design predates the formal experiment run. The generator is
+[make_suite.py](../scripts/make_suite.py). It does not inspect results.
+The expanded [study configuration](../configs/study.json) contains **955 trials** across five seeds:
+101, 202, 303, 404, and 505. No seed is selected based on its outcome.
 
-Compare FCFS, continuous batching, and chunked prefill at chunk sizes 128/256/512/1024 on the same workload seeds.
+| ID | Question | Trials |
+| --- | --- | ---: |
+| E1 | Baselines and chunks 128/512; 256 requests; analytical and piecewise | 40 |
+| E2 | Chunks 32/64/128/256/512/1024/2048 at 64 requests/s | 90 |
+| E3 | Offered load 2/8/16/32/64/128 requests/s; 256-request finite cohorts | 180 |
+| E4 | Short/short, long/short, short/long, mixed lengths | 120 |
+| E5 | A streaming request, a large prompt, then short arrivals; compare FCFS vs aging | 40 |
+| E6 | Poisson versus burst arrivals at the same configured mean rate | 60 |
+| E7 | Waiting fairness and prefill priority at high load | 50 |
+| E8 | Nine analytical coefficient pairs, three piecewise interference settings, synthetic trace | 195 |
+| E9 | Closed-loop concurrency 1/4/16/32 | 120 |
+| E10 | Resident capacity 8/32 and prefill request capacity 1/4 | 60 |
 
-Report TTFT P50/P95/P99, TPOT P50/P95, E2E P95, throughput, and iteration CV.
+E1-E8 satisfy the main study. E9 and E10 are supplemental controlled experiments, not hardware calibration.
+Unless specified otherwise, each trial uses 128 requests, mixed lengths, a 16 requests/s Poisson
+source, and the common limits in [methodology](METHODOLOGY.md). Output length is clamped at 512.
+E5 uses 64 requests; E6 uses 160; E7 uses 192. E2/E7/E10 use 64 requests/s; E8 uses 32.
 
-## E2 — Chunk-size sweep
+## Workload construction
 
-Sweep chunk size:
+Open-loop comparisons replay identical arrival and length traces across policies. Independent seeded
+random streams keep lengths fixed when arrival processes or rates change. Burst mode submits groups
+of 16 at deterministic intervals. Finite realized arrival rates need not match exactly; the configured
+mean does. Lognormal lengths are clamped to explicit limits, so these are bounded heavy-tailed mixtures.
 
-```text
-32, 64, 128, 256, 512, 1024, 2048
-```
+E5 starts a small-prompt, long-output stream. The next request has an 8,192-token prompt, followed
+by many short requests. Seed 101 retains complete traces for all four policies and both models.
+This tests decode interference and queue order separately.
 
-Goal: expose the TTFT/TPOT/throughput trade-off rather than claiming one universal optimum.
+Closed-loop E9 reuses the same ordered request templates, concurrency, and think time. It releases
+replacement requests on completions. Arrival timestamps therefore differ between policies. Those
+comparisons measure a common client-submission rule, not an identical arrival trace.
 
-## E3 — Arrival-rate saturation curve
+## Acceptance and reporting
 
-Sweep request arrival rate from underloaded to overloaded. Plot throughput and tail latency versus offered load.
-
-## E4 — Prompt-length regimes
-
-At minimum:
-
-- short prompts / short outputs;
-- long prompts / short outputs;
-- short prompts / long outputs;
-- mixed heavy-tail workload.
-
-## E5 — Adversarial head-of-line workload
-
-Inject a very long prompt before many short requests. Quantify head-of-line blocking and decode disruption.
-
-## E6 — Burst arrivals
-
-Compare Poisson arrivals against synchronized bursts.
-
-## E7 — Fairness / starvation
-
-Track per-request waiting time. Confirm no policy except intentionally serial FCFS creates accidental starvation.
-
-## E8 — Cost-model sensitivity
-
-Vary prefill/decode coefficients over plausible ranges. Conclusions that disappear under small coefficient changes must be labeled model-sensitive.
-
-## E9 — Hardware calibration (optional but preferred)
-
-If a CUDA GPU is available, collect simple prefill/decode timing traces for one open model and fit/compare the analytical model. Keep measured and simulated results separate.
-
-## Required figures
-
-1. TTFT P95 vs policy/chunk size
-2. TPOT P95 vs policy/chunk size
-3. Request throughput vs offered load
-4. Iteration duration distribution
-5. Iteration CV vs chunk size
-6. Latency-throughput Pareto frontier
-7. Head-of-line blocking case study timeline
-8. Sensitivity heatmap or small-multiple plot
+All 955 trials must finish. Missing seeds, changed workload hashes, corrupted cache records, dropped
+requests, and resource violations are failures. Report negative and neutral outcomes. A universal
+best chunk size is not a required outcome. Finite overload curves must show backlog/drain behavior.
+The [artifact checker](../scripts/check_artifacts.py) independently validates coverage and saved traces.

@@ -1,51 +1,26 @@
-# Project Specification
+# Project specification
 
-## Goal
+Build a small research-engineering artifact, not a web app or a paper submission.
+Study how monolithic prefill, continuous batching, and chunked prefill interact under explicit
+resource limits and alternative analytical timing models.
 
-Build a technically defensible mini research-engineering repository that explains and demonstrates the scheduling trade-offs between monolithic prefill, continuous batching, and chunked prefill in LLM serving.
+Required deliverables are implemented in source modules rather than notebook-only code:
 
-This is **portfolio technical work**, not a research-paper submission and not a UI/product project.
+| Area | Contract |
+| --- | --- |
+| Simulation | Validated lifecycle, hard limits, deterministic execution, complete request accounting |
+| Policies | Serial FCFS, monolithic continuous batching, chunked prefill; explicit priority variants |
+| Timing | Analytical, piecewise, and trace interpolation with declared provenance |
+| Workloads | Poisson, burst, closed-loop, length regimes, adversarial ordering, CSV replay |
+| Metrics | Request and token-gap latency, throughput, finite-window backlog, variation, fairness proxies |
+| Experiments | Fixed design, matched seeds, verified caching, restartable trials, provenance |
+| Analysis | Seed-level intervals, paired comparisons, static figures, measured/simulated distinction |
+| Delivery | Tests, CI, report, executable commands, readable documentation, main-only Git history |
 
-## Definition of done
+The supplied starter remains in Git history. [AUDIT.md](AUDIT.md) explains corrections.
+[METHODOLOGY.md](METHODOLOGY.md) defines the final semantics.
+[EXPERIMENT_PLAN.md](EXPERIMENT_PLAN.md) specifies the experiment matrix.
 
-The project is complete when it has:
-
-- a correct, deterministic simulator with explicit assumptions;
-- at least three scheduler families;
-- workload generation plus trace import support;
-- reproducible experiment configs;
-- unit, invariant, regression, and adversarial tests;
-- multi-seed sweeps;
-- CSV/JSON result artifacts;
-- publication-quality plots;
-- statistical summaries with uncertainty where appropriate;
-- an ablation/sensitivity study;
-- a concise technical report explaining results and limitations;
-- CI passing from a clean checkout;
-- no unsupported claims about real GPU performance.
-
-## Priority implementation work
-
-1. Refactor timing into pluggable cost models.
-2. Add per-iteration token-budget and KV/batch-capacity invariants.
-3. Add trace import/export.
-4. Add experiment sweep runner with deterministic seeds.
-5. Add pandas/matplotlib analysis scripts.
-6. Add bootstrap confidence intervals for aggregate comparisons.
-7. Add timeline/Gantt-style scheduler visualization (static plot only, no frontend).
-8. Add saturation and adversarial workloads.
-9. Add scheduler fairness metrics.
-10. Write `REPORT.md` with methodology, results, caveats, and reproducibility instructions.
-
-## Non-goals
-
-- No web application.
-- No dashboard.
-- No LLM API integration.
-- No pretending analytical timings are hardware measurements.
-- No copying vLLM/Sarathi implementations wholesale.
-- No weakening tests to force expected narratives.
-
-## Quality bar
-
-The repository should look like a small systems lab: clear hypotheses, explicit models, controlled experiments, reproducibility, plots, and honest limitations.
+No external LLM API, dashboard, cloud deployment, or fabricated hardware result is permitted.
+No coefficient may depend on the scheduler's identity. Correctness tests must not enforce a preferred
+performance ranking. Cost-model limitations remain part of the result, not defects to conceal.

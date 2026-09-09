@@ -1,0 +1,255 @@
+# LLM Serving Scheduler Lab: simulation study
+
+**Result type: SIMULATED. No hardware inference measurements were performed.**
+
+Source commit: `$source`. Core source SHA-256: `$source_sha256`.
+Study: $trial_count trials; five workload seeds (101, 202, 303, 404, 505).
+The [manifest](results/release/manifest.json) records complete configuration, environment, and checksums.
+Tables average per-seed metrics. Milliseconds below are synthetic model time.
+
+## 1. Question and principal result
+
+How do serving schedulers trade first-token latency, token delivery latency, throughput, and
+iteration regularity when prefill and decode share one execution resource?
+
+There is no universal winning chunk size in this study. In E2's piecewise model at 64 requests/s,
+chunk 128 changes mean TPOT P95 by $e2_tpot_change% relative to monolithic prefill.
+The same policy increases TTFT and decreases throughput. Reporting only decode latency would hide
+that cost. This negative result is retained rather than tuning coefficients to force a speedup.
+
+$tradeoff_table
+
+Relative changes use paired seeds and the ratio of means. Negative latency changes are improvements;
+negative throughput changes are regressions. Confidence intervals describe seed variability only.
+
+## 2. Background and scope
+
+[Orca](https://www.usenix.org/conference/osdi22/presentation/yu) introduces iteration-level scheduling.
+[Sarathi-Serve](https://www.usenix.org/conference/osdi24/presentation/agrawal) motivates chunked prefills
+and the throughput-latency trade-off. These are conceptual references, not reproduced performance results.
+
+The lab defaults to the first output at final-prefill completion, followed by O-1 decode steps.
+Prefill has many prompt tokens to process; decode selects one next token per request. Their distinct
+batch costs motivate the experiment. The implementation does not execute a transformer, GPU kernels,
+a paged KV allocator, or a distributed pipeline. It does not claim to implement vLLM or Sarathi-Serve.
+
+## 3. Architecture and assumptions
+
+```text
+JSON/YAML suite or CSV request trace
+    -> seeded arrival and length streams
+    -> waiting queue + resident request states
+    -> scheduler plan
+    -> independent hard-limit validation
+    -> policy-independent cost model
+    -> batch-end state transitions and token timestamps
+    -> verified artifacts -> seed-level statistics -> static figures and this report
+```
+
+Default common limits are 32 batch slots, 32 residents, 16,384 processed tokens/iteration, and one
+prefill request/iteration. Prompt length is at most 8,192. Whole prompts cannot bypass the token budget.
+No admission occurs mid-iteration. Requests remain resident until completion. Empty eligible plans,
+invalid allocations, dropped requests, and iteration-limit exhaustion fail explicitly.
+
+Serial FCFS serves one whole request at a time. `mono` admits whole prompts beside ready decodes.
+`chunk_N` uses the same ordering but limits each selected prefill to N tokens. Aging prefill ordering
+and prefill-first priority are separate ablations. The optional KV reservation proxy is tested but
+disabled in these main sweeps. See [full semantics and formulas](docs/METHODOLOGY.md).
+
+## 4. Timing models and workloads
+
+The analytical model adds fixed overhead, linear prefill work, linear/quadratic decode work, and
+optional context terms. The piecewise model changes efficiency at prompt/batch knees and accounts
+for shared decode cost. A trace adapter bilinearly interpolates a complete grid. Its bundled grid
+is synthetic. All model inputs and coefficients are in each run's metadata; the policy name is
+never passed to a cost model.
+
+Poisson, synchronized burst, and closed-loop sources cover four bounded length regimes. Independent
+random streams preserve lengths when arrival processes change. Open-loop policies replay identical
+arrival/length hashes. Closed-loop policies share request templates and a client-submission rule;
+their actual arrival times necessarily differ. E5 injects one large prompt after a running stream.
+
+$count_table
+
+[The predefined design](docs/EXPERIMENT_PLAN.md) specifies every sweep. E1-E8 are the requested main
+experiments. E9 tests fixed concurrency. E10 tests resident/prefill limits. No trials or seeds were
+removed because they gave unfavorable results.
+
+## 5. Metrics and uncertainty
+
+TTFT is arrival-to-first-output. TPOT is a request's average gap after its first output. E2E is
+arrival-to-completion. O=1 has undefined TPOT and contributes no TPOT sample. ITL reports individual
+token gaps and can expose stalls hidden by request averages. P50/P95/P99 use linear interpolation.
+
+Cohort throughput includes idle time and drain. Arrival-window throughput excludes drain and is
+reported with final-arrival backlog. Logical token counts and processed token counts are separate.
+Iteration CV, busy fraction, and slot occupancy are simulation proxies, not measured GPU utilization
+or pipeline bubbles. No pipeline exists in this model.
+
+Statistics use 2,000 bootstrap samples at the workload-seed level, with paired seed resampling for
+deltas and ratio-of-means changes. The artifact includes mean, median, sample standard deviation,
+95% intervals, and paired d_z where defined. No p-value or significance claim is manufactured.
+Five seeds give limited uncertainty resolution, especially for P99 from small finite cohorts.
+
+## 6. E1: baseline comparison
+
+Configured arrival rate: 16 requests/s. Each run contains 256 requests. A low serial TPOT does not
+mean good service: FCFS can make requests wait a long time before producing anything.
+
+$baseline_table
+
+The analytical and piecewise models disagree on some benefits. This is evidence of model sensitivity,
+not a reason to discard either baseline.
+
+![Iteration distributions](figures/04_iteration_ecdf.svg)
+
+The ECDF is the explicitly selected seed 101, not a multi-seed confidence interval. Histogram
+rounding is used only for this plot. Unrounded metrics remain in the result table.
+
+## 7. E2: chunk-size ablation
+
+Piecewise model, 128 requests/run, configured arrival rate 64 requests/s:
+
+$chunk_table
+
+Smaller chunks reduce individual decode stalls and often regularize iterations. Extra small-chunk
+work and scheduling overhead can delay prefill completion. Large chunks approach monolithic behavior.
+
+![TTFT by chunk](figures/01_ttft_chunk.svg)
+![TPOT by chunk](figures/02_tpot_chunk.svg)
+![Iteration variation](figures/05_iteration_cv.svg)
+![Latency-throughput frontier](figures/06_pareto.svg)
+
+In this two-objective TTFT/throughput view, monolithic prefill dominates the chunked means for this
+particular piecewise workload. Decode latency is omitted from that frontier; adding it changes the
+optimization problem. The frontier is descriptive and does not establish statistical dominance.
+
+## 8. E3: finite offered-load saturation
+
+Piecewise model, 256 requests/run:
+
+$load_table
+
+The fixed request count makes high-load arrival windows shorter. Startup and queueing can lower
+arrival-window completions even when cohort throughput is stable. The curve is not a steady-state
+capacity benchmark. Growing backlog, drain time, and late-half TTFT corroborate overload. FCFS TPOT
+can remain flat because it serializes requests; that does not prevent queueing failure.
+
+![Throughput sweep](figures/03_throughput_load.svg)
+![Latency sweep](figures/12_ttft_load.svg)
+
+## 9. E4 and E6: workload and burst sensitivity
+
+Piecewise model, four length regimes at 16 requests/s:
+
+$regime_table
+
+The same chunk size interacts differently with short prompts, long prompts, and long outputs.
+Burst E6 uses identical token lengths with Poisson or grouped arrivals. Configured mean rate is the
+same; the realized finite arrival span is not forced to match exactly.
+
+![Burst comparison](figures/10_burst.svg)
+
+## 10. E5: head-of-line blocking is not one problem
+
+The first request is a running stream. The next has an 8,192-token prompt. Later requests are short.
+The table separates the stream's maximum token gap from the short-request waiting outcome.
+
+$hol_table
+
+Chunking alone protects the running stream from one long uninterrupted prefill batch. FCFS prefill
+order can still make short waiting requests wait through all chunks. Aging serves other waiting
+prefills earlier, but can delay the large prompt. That fairness trade-off is visible, not hidden.
+
+![Head-of-line trace](figures/07_hol_timeline.svg)
+
+The timeline shows seed 101 and requests 0, 1, and 2 only. Hatched intervals are prefill service;
+vertical marks are decode outputs. Omitted requests still consume capacity and remain in raw traces.
+
+## 11. E7: fairness and priority
+
+Piecewise model at 64 requests/s:
+
+$fairness_table
+
+The Jain index measures equality of a defined waiting-satisfaction transform. It is not a fairness
+certificate. The threshold count means a service gap exceeded one second, not infinite starvation.
+Prefill-first and decode-first may coincide when residual capacity is not restrictive; identical
+results are valid. Finite completion does not prove liveness for an infinite arrival stream.
+
+![Waiting fairness](figures/09_fairness.svg)
+
+## 12. E8: cost-model sensitivity
+
+Chunk 512 relative to `mono`, configured arrival rate 32 requests/s:
+
+$sensitivity_table
+
+Across the nine analytical coefficient settings, TPOT improvements coexist with modest throughput
+changes. The piecewise settings can impose a throughput penalty and much larger TTFT. The synthetic
+trace tests interpolation and plumbing; it is not independent hardware evidence. A conclusion that
+changes sign across these models must not be promoted as a general GPU finding.
+
+![Cost sensitivity](figures/08_cost_sensitivity.svg)
+
+## 13. E9 and E10: submission and resource limits
+
+Closed-loop sources release a replacement on completion, with zero think time in this study.
+The same client count is a different load model from a Poisson rate.
+
+![Closed-loop throughput](figures/11_closed_loop.svg)
+
+E10 changes resident and per-iteration prefill capacity in the analytical model:
+
+$capacity_table
+
+Resource limits and admission order are part of the scheduler definition. A comparison that changes
+these silently would not isolate chunking. The primary experiments keep them fixed.
+
+## 14. Validation and adversarial review
+
+The supplied seven-test baseline remains in Git history. The revised suite tests hand-calculated
+timestamps, O=1, duplicate IDs, nonfinite inputs, combined budgets, invalid plans, idle jumps,
+iteration limits, decode rotation, KV reservations, CSV validation, and exact replay. Randomized
+conservation tests cover twelve seeds, three cost models, and four policy variants.
+
+The experiment framework checks duplicate seeds, paired workload hashes, complete conditions,
+atomic cache hashes, corruption repair, and dirty-source rejection. The independent artifact checker
+validated all 955 rows and eight saved traces. It reconstructs prompt/output counts and checks hard
+budgets. Plot tests parse generated SVGs. CI uses Linux and Windows with Python 3.11 and 3.13.
+
+All numeric artifacts are produced by scripts. The experiment design was committed before the formal
+run. The host executed the 955-trial simulation; the published release is independently regenerated
+in CI. No actual GPU throughput, latency, or utilization measurement occurred.
+
+## 15. Limits and conclusions
+
+The stable mechanisms here are accounting properties: hard budget enforcement, bounded chunk work,
+first-token correctness, and the distinction between queue waiting and token stalls. Exact performance
+rankings depend on the timing model, arrival regime, sequence limits, and prefill ordering.
+
+This is a single-resource analytical experiment with finite cohorts, bounded synthetic lengths,
+five seeds, no calibrated kernels, no transport time, no prefix reuse, no true KV paging/preemption,
+no speculative decoding, and no distributed pipeline. Piecewise overlap is an assumption. The
+trace adapter lacks context axes. The study cannot establish deployment SLO capacity or production
+fairness. The [hardware calibration plan](docs/CALIBRATION.md) specifies the missing measurement work.
+
+Chunking is useful to study because it changes both useful work size and interference. The correct
+engineering conclusion is a conditional trade-off, not an unconditional speedup.
+
+## 16. Reproduce and inspect
+
+```bash
+python -m pip install -e ".[dev,analysis]"
+python -m pytest -q
+python -m llm_scheduler_lab run --config configs/study.json --output results/reproduction
+python -m llm_scheduler_lab summarize --results results/reproduction --output results/reproduction/statistics
+python -m llm_scheduler_lab plot --results results/reproduction --output results/reproduction/figures
+python scripts/check_artifacts.py results/reproduction
+```
+
+Run the same command again to verify cache reuse. Use a clean committed checkout. `--allow-dirty`
+is a debugging option, not a release certification. Compare metric columns with tolerance rather than
+UTC/environment fields. See [reproduction details](docs/REPRODUCIBILITY.md),
+[per-run CSV](results/release/summary.csv), [aggregates](results/release/statistics/aggregate.csv),
+[paired comparisons](results/release/statistics/paired.csv), and [source audit](docs/AUDIT.md).

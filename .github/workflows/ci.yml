@@ -36,30 +36,52 @@ jobs:
           python -m llm_scheduler_lab plot --results results/ci-smoke --output results/ci-smoke/figures
           python scripts/check_artifacts.py results/ci-smoke
           python scripts/check_links.py
-  cleanup-merged-setup-branches:
+  publish-study:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Remove only the four authorized, fully merged setup branches
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install analysis dependencies
+        run: python -m pip install -e ".[dev,analysis]"
+      - name: Run complete study or verify existing publication
+        run: python scripts/publish_results.py
+      - name: Publish generated artifacts without rewriting history
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
-          for branch in bootstrap bootstrap-2 starter-backup starter-build; do
-            ref="$(git ls-remote --heads origin "refs/heads/$branch")"
-            if [ -z "$ref" ]; then continue; fi
-            sha="${ref%%$'\t'*}"
-            git fetch origin "refs/heads/$branch:refs/remotes/origin/$branch"
-            if git merge-base --is-ancestor "$sha" origin/main; then
-              git push --force-with-lease="refs/heads/$branch:$sha" origin ":refs/heads/$branch"
-            else
-              echo "Preserving $branch: it contains unmerged work."
-              exit 1
-            fi
-          done
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo 'main advanced during validation. Refusing to overwrite concurrent work.'
+            exit 1
+          fi
+          git add -- README.md REPORT.md results/release figures/*.svg figures/manifest.json
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'docs: publish verified simulated scheduler study'
+            git push origin HEAD:main
+          fi
+          git rev-parse HEAD > /tmp/scheduler-release-head.txt
+          git archive --format=zip --output=/tmp/scheduler-release.zip HEAD
+          git bundle create /tmp/scheduler-history.bundle main
+      - name: Upload reproducible release snapshot and validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-release
+          path: |
+            /tmp/scheduler-release.zip
+            /tmp/scheduler-history.bundle
+            /tmp/scheduler-release-head.txt
+            results/publication-tests.xml
+          if-no-files-found: error
+          retention-days: 14

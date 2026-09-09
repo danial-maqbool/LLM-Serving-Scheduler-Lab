@@ -1,0 +1,5 @@
+* text=auto eol=lf
+results/release/** -text
+figures/** -text
+*.png -text
+*.zip -text

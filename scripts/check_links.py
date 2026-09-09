@@ -1,6 +1,7 @@
 """Check local Markdown links and anchors. External URLs are not network-tested."""
 from __future__ import annotations
 import re
+import subprocess
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -13,8 +14,13 @@ def slug(text: str) -> str:
 
 def check(root: Path = ROOT) -> int:
     failures, checked, external = [], 0, 0
-    files = [p for p in root.rglob('*.md') if not any(part.startswith('.') for part in p.relative_to(root).parts)
-             and not any(part in ('site-packages','node_modules','build','dist') for part in p.relative_to(root).parts)]
+    try:
+        paths = subprocess.check_output(['git','-C',str(root),'ls-files','--cached','--others','--exclude-standard'],
+                                        text=True,stderr=subprocess.DEVNULL).splitlines()
+        files = [root / name for name in sorted(set(paths)) if name.endswith('.md')]
+    except (OSError,subprocess.CalledProcessError):
+        files = [p for p in root.rglob('*.md') if not any(part.startswith('.') for part in p.relative_to(root).parts)
+                 and not any(part in ('site-packages','node_modules','build','dist') for part in p.relative_to(root).parts)]
     for path in files:
         text = re.sub(r'```.*?```', '', path.read_text(encoding='utf-8'), flags=re.S)
         for target in re.findall(r'\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)', text):
