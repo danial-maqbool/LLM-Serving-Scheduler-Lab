@@ -22,11 +22,20 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev,analysis]"
       - name: Tests
         run: python -m pytest -q
       - name: Baseline smoke experiment
         run: python scripts/run_experiment.py --config configs/baseline.json --output results/smoke.csv
+      - name: Suite smoke and resumable cache
+        shell: bash
+        run: |
+          python -m llm_scheduler_lab run --config configs/smoke.json --output results/ci-smoke
+          python -m llm_scheduler_lab run --config configs/smoke.json --output results/ci-smoke
+          python -m llm_scheduler_lab summarize --results results/ci-smoke --output results/ci-smoke/statistics
+          python -m llm_scheduler_lab plot --results results/ci-smoke --output results/ci-smoke/figures
+          python scripts/check_artifacts.py results/ci-smoke
+          python scripts/check_links.py
   cleanup-merged-setup-branches:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

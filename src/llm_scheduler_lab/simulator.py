@@ -107,10 +107,12 @@ class Simulator:
             lookup = {s.request.request_id: s for s in view.residents}
             # Only selected waiting IDs need lookup; validation still rejects future IDs.
             selected = set(plan.prefill_tokens) | set(plan.decode_request_ids)
-            lookup.update((s.request.request_id, s) for s in waiting if s.request.request_id in selected)
+            if plan.prefill_tokens:
+                lookup.update((s.request.request_id, s) for s in waiting if s.request.request_id in selected)
             self._validate_plan(plan, lookup, now, view)
             work = self._batch_work(plan, lookup)
             duration = self.cost_model.duration_ms(work)
+            finite('iteration duration', duration, positive=True)
             if not math.isfinite(duration) or duration <= 0 or now + duration <= now:
                 raise ValueError('cost model must advance finite simulated time')
             end = now + duration
@@ -173,6 +175,8 @@ class Simulator:
                        now: float, view: ScheduleView) -> None:
         cfg = self.config
         p, d = set(plan.prefill_tokens), set(plan.decode_request_ids)
+        for rid in p | d:
+            integer('planned request ID', rid, 0)
         if not p and not d:
             raise RuntimeError('empty plan while eligible work remains')
         if len(d) != len(plan.decode_request_ids) or p & d:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-serving-scheduler-lab"
-version = "0.1.0"
+version = "0.2.0"
 description = "Research-engineering simulator for LLM serving scheduling policies"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,7 +14,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
-analysis = ["pandas>=2.2", "matplotlib>=3.9"]
+analysis = ["numpy>=2.0", "pandas>=2.2", "matplotlib>=3.9", "PyYAML>=6.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
