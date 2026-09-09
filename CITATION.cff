@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+title: "LLM Serving Scheduler Lab"
+message: "If you use this research-engineering artifact, please cite the repository."
+type: software
+authors:
+  - family-names: Maqbool
+    given-names: Danial
+year: 2026
+license: MIT

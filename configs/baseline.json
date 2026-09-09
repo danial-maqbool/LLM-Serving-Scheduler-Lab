@@ -1,0 +1,24 @@
+{
+  "workload": {
+    "n_requests": 200,
+    "arrival_rate_rps": 8.0,
+    "prompt_median_tokens": 512,
+    "prompt_sigma": 0.9,
+    "output_median_tokens": 128,
+    "output_sigma": 0.55,
+    "min_prompt_tokens": 16,
+    "max_prompt_tokens": 8192,
+    "min_output_tokens": 8,
+    "max_output_tokens": 1024,
+    "seed": 7
+  },
+  "simulator": {
+    "fixed_iteration_overhead_ms": 0.10,
+    "prefill_ms_per_token": 0.018,
+    "decode_ms_per_sequence": 0.22,
+    "decode_batch_quadratic_ms": 0.003,
+    "max_batch_size": 32,
+    "max_tokens_per_iteration": 2048
+  },
+  "chunk_sizes": [128, 256, 512, 1024]
+}
