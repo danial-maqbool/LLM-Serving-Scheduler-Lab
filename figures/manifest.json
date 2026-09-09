@@ -1,0 +1,21 @@
+{
+  "result_kind": "SIMULATED",
+  "files": [
+    "01_ttft_chunk.svg",
+    "02_tpot_chunk.svg",
+    "03_throughput_load.svg",
+    "12_ttft_load.svg",
+    "04_iteration_ecdf.svg",
+    "05_iteration_cv.svg",
+    "06_pareto.svg",
+    "07_hol_timeline.svg",
+    "08_cost_sensitivity.svg",
+    "09_fairness.svg",
+    "10_burst.svg",
+    "11_closed_loop.svg"
+  ],
+  "input_summary_sha256": "55f92dff1146c5309dc5cac04bbd1385d29d80bc1bc9ebf89c9b946268796c3d",
+  "source_commits": [
+    "096b30fbb721a142dd81faa2c7359fbc3b2a4bf8"
+  ]
+}

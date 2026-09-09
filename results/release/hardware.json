@@ -1,0 +1,1 @@
+{"cuda_available":false,"devices":[],"hardware_measurements_performed":false,"nvidia_smi_found":false,"platform":"Linux-6.17.0-1022-azure-x86_64-with-glibc2.39","python":"3.13.15","status":"Hardware calibration not executed in this environment. No usable CUDA device detected.","torch_installed":false}

@@ -1,96 +1,87 @@
 # LLM Serving Scheduler Lab
 
-A compact research-engineering lab for studying how LLM serving schedulers trade off **time-to-first-token (TTFT)**, **time-per-output-token (TPOT)**, end-to-end latency, throughput, and iteration-time variance under mixed prefill/decode workloads.
+A Python simulation lab for LLM serving schedulers. No UI, LLM API, or model weights.
 
-This repository is intentionally **not an application**. It is an experiment-first systems project: simulator, scheduling policies, workloads, metrics, ablations, plots, tests, and a technical report.
+**955 simulated trials · 5 fixed seeds · 3 cost-model interfaces · 12 static figures.**
+**No GPU inference measurements.** Synthetic timings must not be read as hardware predictions.
 
-## Core question
+The lab compares serial FCFS, iteration-level batching with monolithic prefill, and chunked prefill.
+It isolates chunk size, priority, arrival patterns, resource limits, and cost-model assumptions.
 
-How do scheduling choices change latency and throughput when long compute-heavy prefills compete with memory-sensitive decode steps?
+## What the study found
 
-The first study compares:
+At 64 requests/s under the piecewise model, chunk 128 reduces request TPOT P95 but increases TTFT
+and lowers finite-cohort throughput. Chunking protects an active stream from a long prefill; it does
+not automatically remove FCFS head-of-line waiting. The report retains these negative results.
 
-1. **FCFS / request-at-a-time** baseline
-2. **Continuous batching** with monolithic prefills
-3. **Chunked prefill** with configurable chunk sizes
+| Metric | Mean paired delta | Relative change | Paired 95% interval |
+| --- | --- | --- | --- |
+| ttft_p95_ms | 2,472.62 | 154.07% | [145.93%, 165.39%] |
+| tpot_p95_ms | -9.50 | -70.23% | [-73.46%, -67.68%] |
+| itl_p99_ms | -82.67 | -95.13% | [-95.38%, -94.80%] |
+| request_throughput_rps | -11.08 | -35.02% | [-37.49%, -32.78%] |
 
-The simulator is deliberately explicit about its assumptions. It is not presented as a cycle-accurate GPU simulator. The project should eventually include sensitivity analysis and, where hardware is available, calibration against measured inference traces.
-
-## Primary metrics
-
-- TTFT: arrival to first generated token
-- TPOT: average time between generated output tokens after the first token
-- End-to-end latency
-- Request throughput
-- Token throughput
-- P50 / P95 / P99 latency
-- Iteration-time mean, variance, and coefficient of variation
-- Decode stall time
-- Prefill waiting time
-- Scheduler fairness / starvation indicators
-
-## Repository layout
-
-```text
-LLM-Serving-Scheduler-Lab/
-├── src/llm_scheduler_lab/
-│   ├── models.py
-│   ├── workload.py
-│   ├── simulator.py
-│   ├── metrics.py
-│   └── policies/
-│       ├── base.py
-│       ├── fcfs.py
-│       ├── continuous_batching.py
-│       └── chunked_prefill.py
-├── scripts/
-│   └── run_experiment.py
-├── configs/
-│   └── baseline.json
-├── tests/
-├── docs/
-│   ├── METHODOLOGY.md
-│   ├── EXPERIMENT_PLAN.md
-│   └── PROJECT_SPEC.md
-├── results/
-├── figures/
-└── .github/workflows/ci.yml
-```
+All rows compare chunk 128 against monolithic prefill on matching seeds. Read the
+[technical report](REPORT.md) before interpreting the numbers. Neither the synthetic cost equations
+nor this study reproduce the hardware results of vLLM or Sarathi-Serve.
 
 ## Quick start
 
+Python 3.11 or newer. From a clean checkout:
+
 ```bash
-python -m pip install -e .[dev]
-pytest -q
-python scripts/run_experiment.py --config configs/baseline.json --output results/baseline.csv
+python -m pip install -e ".[dev,analysis]"
+python -m pytest -q
+python -m llm_scheduler_lab run --config configs/smoke.json --output results/smoke
+python -m llm_scheduler_lab summarize --results results/smoke --output results/smoke/statistics
+python -m llm_scheduler_lab plot --results results/smoke --output results/smoke/figures
 ```
 
-## Current foundation
+Replace `configs/smoke.json` with `configs/study.json` and choose a new output directory for the full
+study. Rerun the same command to resume verified trial caches. Use `--experiment E5` for one experiment.
+The core has no runtime dependencies. The analysis extra supplies plotting and YAML support.
 
-The starter implementation already provides:
+## Architecture
 
-- deterministic request/state models;
-- a synthetic workload generator;
-- an event/iteration-based simulator;
-- FCFS, continuous-batching, and chunked-prefill policies;
-- TTFT/TPOT/E2E/throughput metrics;
-- a CLI experiment runner;
-- smoke/regression tests;
-- CI;
-- a detailed experiment and validation plan.
+```text
+config / CSV -> reproducible workload -> scheduler -> validated batch -> cost model
+                                      -> state transitions / token timestamps
+                                      -> checksummed results -> paired statistics -> static figures
+```
 
-The next phase should deepen the timing model, add experiment sweeps and plots, validate scheduler invariants, add adversarial workloads, and produce a technically defensible report.
+Implemented: exact lifecycle and capacity checks; analytical/piecewise/trace cost models;
+Poisson/burst/closed-loop input; CSV replay; per-request TTFT/TPOT/E2E and pooled token-gap latency;
+finite-window throughput, backlog, fairness proxies; seeded bootstrap intervals; safe cache reuse;
+Linux/Windows CI and an independent artifact checker.
 
-## Research integrity
+![Chunk-size trade-off](figures/02_tpot_chunk.svg)
+![Head-of-line example](figures/07_hol_timeline.svg)
 
-Results must distinguish between:
+## Read the code and evidence
 
-- **simulated conclusions** under the stated model;
-- **measured hardware results**, if added later;
-- **claims from prior work**.
+| Area | Entry point |
+| --- | --- |
+| Simulation | [simulator.py](src/llm_scheduler_lab/simulator.py) |
+| Scheduling | [policies](src/llm_scheduler_lab/policies) |
+| Cost models | [cost.py](src/llm_scheduler_lab/cost.py) |
+| Reproducible runner | [experiments.py](src/llm_scheduler_lab/experiments.py) |
+| Metric definitions | [methodology](docs/METHODOLOGY.md) |
+| Predefined matrix | [experiment design](docs/EXPERIMENT_PLAN.md) |
+| Numerical artifacts | [release results](results/release) |
+| Validation | [tests](tests) and [audit](docs/AUDIT.md) |
+| Reproduction | [instructions](docs/REPRODUCIBILITY.md) |
+| Hardware limitations | [calibration interface](docs/CALIBRATION.md) |
 
-Do not describe simulated timings as GPU measurements.
+Source commit for the simulation data: `096b30fbb721a142dd81faa2c7359fbc3b2a4bf8`. Each run also records a source-content hash,
+configuration, workload hashes, seed, environment, and simulated/measured provenance.
+
+## Limits
+
+Single execution resource. Finite synthetic workloads. No GPU kernels or distributed pipeline.
+Five seeds do not establish universal rankings. KV capacity is a reservation proxy. The bundled
+trace is synthetic, not measured calibration. Full limitations and conditional findings are in
+[REPORT.md](REPORT.md).
 
 ## License
 
-MIT.
+[MIT](LICENSE). Attribution metadata: [CITATION.cff](CITATION.cff).
