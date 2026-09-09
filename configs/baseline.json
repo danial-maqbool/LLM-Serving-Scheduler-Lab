@@ -18,7 +18,7 @@
     "decode_ms_per_sequence": 0.22,
     "decode_batch_quadratic_ms": 0.003,
     "max_batch_size": 32,
-    "max_tokens_per_iteration": 2048
+    "max_tokens_per_iteration": 16384
   },
   "chunk_sizes": [128, 256, 512, 1024]
 }

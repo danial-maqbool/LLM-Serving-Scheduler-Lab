@@ -1,24 +1,18 @@
 from __future__ import annotations
-
-from ..models import RequestState, SimulatorConfig
-from .base import BatchPlan, active
+from .base import BatchPlan, ScheduleView
+from ..models import SimulatorConfig
 
 
 class FCFSPolicy:
-    """Serve one request at a time, oldest arrival first."""
+    """Non-preemptive request-at-a-time FIFO baseline."""
+    name = 'fcfs'
+    monolithic = True
 
-    name = "fcfs"
-
-    def plan(self, now_ms: float, states: list[RequestState], config: SimulatorConfig) -> BatchPlan:
-        candidates = sorted(
-            active(states),
-            key=lambda s: (s.request.arrival_ms, s.request.request_id),
-        )
+    def plan(self, now_ms: float, view: ScheduleView, config: SimulatorConfig) -> BatchPlan:
+        candidates = view.residents or view.waiting
         if not candidates:
             return BatchPlan()
-        state = candidates[0]
-        if state.prefill_remaining > 0:
-            return BatchPlan(prefill_tokens={state.request.request_id: state.prefill_remaining})
-        if state.decode_remaining > 0:
-            return BatchPlan(decode_request_ids=[state.request.request_id])
-        return BatchPlan()
+        s = candidates[0]
+        if s.prefill_remaining:
+            return BatchPlan({s.request.request_id: s.prefill_remaining})
+        return BatchPlan(decode_request_ids=[s.request.request_id])
