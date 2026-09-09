@@ -1,0 +1,23 @@
+{
+  "trials_compared": 955,
+  "numeric_columns_compared": 80,
+  "maximum_absolute_difference": 0.0,
+  "workload_and_arrival_hashes_equal": true,
+  "source_sha256_equal": true,
+  "local_simulation_commit": [
+    "6a1ce9a00fb7e1f1e168ec5a2a7491e333fbd522"
+  ],
+  "ci_simulation_commit": [
+    "096b30fbb721a142dd81faa2c7359fbc3b2a4bf8"
+  ],
+  "different_provenance_fields": [
+    "created_utc",
+    "git_commit",
+    "python_version",
+    "platform"
+  ],
+  "tolerance": {
+    "relative": 1e-10,
+    "absolute": 1e-08
+  }
+}
